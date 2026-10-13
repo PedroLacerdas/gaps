@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function logado() { return request.auth != null; }
+    // O papel de cada pessoa fica em usuarios/<e-mail em minúsculas>, no campo "papel".
+    function meuCadastro() { return /databases/$(database)/documents/usuarios/$(request.auth.token.email); }
+    function editor() {
+      return logado() && exists(meuCadastro()) && get(meuCadastro()).data.papel in ['tecnico', 'supervisor'];
+    }
+
+    // Relatórios de turno: um documento por data e turno, por exemplo "2026-10-07_X".
+    // Quem entrou preenche e salva; só técnicos e supervisores excluem.
+    match /relatorios/{id} {
+      allow read, create, update: if logado();
+      allow delete: if editor();
+    }
+    // "boxplot": ajustes da aba Boxplot. "cadastros": listas editadas em Instruções e cadastros.
+    match /config/{id} {
+      allow read: if logado();
+      allow write: if editor();
+    }
+    // Histórico por turno importado da planilha de dados, um documento por mês ("2021-10").
+    match /historico/{id} {
+      allow read: if logado();
+      allow write: if editor();
+    }
+    // Cada pessoa lê o próprio cadastro; técnicos e supervisores leem e alteram os de todos.
+    match /usuarios/{email} {
+      allow read: if logado() && (request.auth.token.email == email || editor());
+      allow write: if editor();
+    }
+  }
+}

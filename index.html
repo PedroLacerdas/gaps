@@ -2861,7 +2861,7 @@ function pdfReport(vals, meta) {
   const time = v => (typeof v === 'number' ? fracToTime(v) : '');
   const paradas = [], ocorr = [];
   for (let r = 36; r <= 44; r++) if (['B', 'C', 'D', 'H', 'I', 'Y'].some(c => vals[c + r] !== undefined && vals[c + r] !== null && !(c === 'H' && !vals['D' + r] && !vals['I' + r] && !vals['B' + r] && !vals['Y' + r]))) paradas.push(r);
-  for (let r = 48; r <= 56; r++) if (['B', 'C', 'D', 'E', 'I'].some(c => vals[c + r] !== undefined && vals[c + r] !== null)) ocorr.push(r);
+  for (let r = 48; r <= 56; r++) if (['B', 'C', 'E', 'I'].some(c => vals[c + r] !== undefined && vals[c + r] !== null)) ocorr.push(r);
 
   /* paradas do turno: a coluna Duração traz a barra de cada parada, na cor do tipo (operação, manutenção, outras) */
   const W3 = [36, 36, 130, 150, 36, 60, 96]; W3.push(CW - W3.reduce((a, b) => a + b, 0));
@@ -2884,10 +2884,10 @@ function pdfReport(vals, meta) {
   y += 13;
 
   /* ocorrências à esquerda, produtos programados × realizados à direita */
-  const half = (CW - 20) / 2, W4 = [34, 34, 34, 80]; W4.push(half - W4.reduce((a, b) => a + b, 0));
-  const rows4 = [[hd(L('B47')), hd(L('C47')), hd(''), hd(L('E47')), hd(L('I47'))]];
-  for (const r of ocorr) { const lines = d.wrap(String(vals['I' + r] ?? ''), W4[4] - 6, 6.4, false, 2); rows4.push({ h: Math.max(10.5, 4 + lines.length * 8), cells: [time(vals['B' + r]), time(vals['C' + r]), time(vals['D' + r]), String(vals['E' + r] ?? ''), { lines }] }); }
-  if (!ocorr.length) rows4.push([{ t: 'Sem ocorrências lançadas.', span: 5, color: MUTED, align: 'left' }]);
+  const half = (CW - 20) / 2, W4 = [34, 34, 80]; W4.push(half - W4.reduce((a, b) => a + b, 0));
+  const rows4 = [[hd(L('B47')), hd(L('C47')), hd(L('E47')), hd(L('I47'))]];
+  for (const r of ocorr) { const lines = d.wrap(String(vals['I' + r] ?? ''), W4[3] - 6, 6.4, false, 2); rows4.push({ h: Math.max(10.5, 4 + lines.length * 8), cells: [time(vals['B' + r]), time(vals['C' + r]), String(vals['E' + r] ?? ''), { lines }] }); }
+  if (!ocorr.length) rows4.push([{ t: 'Sem ocorrências lançadas.', span: 4, color: MUTED, align: 'left' }]);
   cabe(Math.max(4 + hRows(rows4), PDF_PROD_H));
   const yC = y;
   pdfGrid(d, M, title(L('B46').charAt(0) + L('B46').slice(1).toLowerCase(), M, yC), W4, rows4);
@@ -3066,22 +3066,22 @@ function histSync() {
     (p && p.conc !== null ? `${nums.length ? ' · ' : ''}programa ${fmtValue(p.conc / 24, '#,##0.0')} por hora` : '');
 }
 function buildParadas() {
-  const head = ['B35', 'C35', 'D35', 'H35', 'I35', 'Y35'].map(a => `<th>${T(a)}</th>`).join('');
+  const head = ['B35', 'C35', 'D35', 'H35', 'Y35', 'I35'].map(a => `<th>${T(a)}</th>`).join('');
   let body = '';
   for (let r = 36; r <= 44; r++) {
     const n = r - 35;
     body += `<tr>${cellTd('B' + r, `${T('B35')}, parada ${n}`)}${cellTd('C' + r, `${T('C35')}, parada ${n}`)}` +
       `<td class="in evt"><div>${control('D' + r, `${T('D35')}, parada ${n}`)}<span class="code" id="code-${r}" title="Código do tipo de evento"></span></div></td>` +
-      `${cellTd('H' + r, `${T('H35')}, parada ${n}`, 'mid')}${cellTd('I' + r, `${T('I35')}, parada ${n}`, 'wide')}${cellTd('Y' + r, `${T('Y35')}, parada ${n}`, 'mid')}</tr>`;
+      `${cellTd('H' + r, `${T('H35')}, parada ${n}`, 'mid')}${cellTd('Y' + r, `${T('Y35')}, parada ${n}`, 'mid')}${cellTd('I' + r, `${T('I35')}, parada ${n}`, 'wide')}</tr>`;
   }
   $('#r-paradas').innerHTML = `<table class="grid"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 function buildOcorr() {
-  const head = `<th>${T('B47')}</th><th>${T('C47')}</th><th><span aria-label="Coluna sem título na planilha">&nbsp;</span></th><th>${T('E47')}</th><th>${T('I47')}</th>`;
+  const head = `<th>${T('B47')}</th><th>${T('C47')}</th><th>${T('E47')}</th><th>${T('I47')}</th>`;
   let body = '';
   for (let r = 48; r <= 56; r++) {
     const n = r - 47;
-    body += `<tr>${cellTd('B' + r, `${T('B47')}, ocorrência ${n}`)}${cellTd('C' + r, `${T('C47')}, ocorrência ${n}`)}${cellTd('D' + r, `Hora (coluna D), ocorrência ${n}`)}` +
+    body += `<tr>${cellTd('B' + r, `${T('B47')}, ocorrência ${n}`)}${cellTd('C' + r, `${T('C47')}, ocorrência ${n}`)}` +
       `${cellTd('E' + r, `${T('E47')}, ocorrência ${n}`, 'mid')}${cellTd('I' + r, `${T('I47')}, ocorrência ${n}`, 'wide')}</tr>`;
   }
   $('#r-ocorr').innerHTML = `<table class="grid"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
