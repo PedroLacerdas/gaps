@@ -3240,6 +3240,13 @@ const store = { db: null, uid: null, canWrite: true, canEdit: true, papel: '', m
 let busy = false;
 /* Preencher e salvar relatórios: quem pode gravar. Cadastros, ajustes do boxplot, histórico e exclusão: só técnicos e supervisores. */
 const podeEditar = () => store.canWrite && store.canEdit;
+/* Com o Firebase, só técnicos e supervisores veem as outras abas; operadores (e quem não entrou) ficam só com Relatório. */
+const soRelatorio = () => store.fbConfigured && store.papel !== 'tecnico' && store.papel !== 'supervisor';
+function aplicarAbas() {
+  const so = soRelatorio();
+  for (const v of VIEWS) if (v !== 'relatorio') $('#tab-' + v).hidden = so;
+  if (so && $('#v-relatorio').hidden) go('relatorio');
+}
 const PAPEIS = { tecnico: 'técnico', supervisor: 'supervisor', operador: 'operador' };
 function updateStatus() {
   const chip = $('#st-chip'), txt = $('#st-text');
@@ -3256,6 +3263,7 @@ function updateStatus() {
   $('#b-xlsx').hidden = !((store.downloads || store.standalone) && typeof JSZip !== 'undefined');
   $('#b-pdf').hidden = !(store.downloads || store.standalone);
   const conta = $('#b-conta'); conta.hidden = !store.fb;
+  aplicarAbas();
   conta.textContent = store.user ? 'Sair (' + store.user + (store.papel ? ' · ' + (PAPEIS[store.papel] || store.papel) : '') + ')' : 'Entrar';
 }
 function ask(message, okLabel) {
@@ -3667,7 +3675,7 @@ function mailInit() {
 /* ---------- Navegação ---------- */
 const VIEWS = ['relatorio', 'salvos', 'producao', 'paradas', 'boxplot', 'instrucoes', 'formulas'];
 function go(name, noHash) {
-  if (!VIEWS.includes(name)) name = 'relatorio';
+  if (!VIEWS.includes(name) || (soRelatorio() && name !== 'relatorio')) name = 'relatorio';
   for (const v of VIEWS) {
     $('#v-' + v).hidden = v !== name;
     $('#tab-' + v).setAttribute('aria-selected', v === name ? 'true' : 'false');
