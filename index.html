@@ -491,8 +491,9 @@ table.pa-tab th[scope="row"] { font-weight: 500; white-space: nowrap; }
       </div>
     </section>
     <section id="v-salvos" class="view" hidden>
-      <section class="panel"><h2>Relatórios salvos</h2>
+      <section class="panel"><div class="cad-head"><h2>Relatórios salvos</h2><div class="actions"><button type="button" class="btn small" id="sv-import" hidden>Importar planilhas (.xlsx)</button><input type="file" id="sv-file" accept=".xlsx" multiple hidden></div></div>
         <p class="hint" id="sv-note"></p>
+        <p class="hint" id="sv-imp-hint" hidden>Importar planilhas lê arquivos no formato do Relatório de turno digitado (uma aba por turno, como a folha MODELO, ou o Excel baixado do app). Cada aba com data e turno preenchidos vira um relatório salvo; os cálculos são refeitos pelas fórmulas do app.</p>
         <div class="scroll" id="sv-wrap" hidden><table class="list"><thead><tr><th>Data</th><th>Turno</th><th>Letra</th><th>Operador</th><th class="num">Alim. total</th><th class="num">C.Mag</th><th class="num">Rec.M</th><th>Situação</th><th>Gravado em</th><th></th></tr></thead><tbody id="sv-body"></tbody></table></div>
         <p class="empty" id="sv-empty"></p>
       </section>
@@ -2440,6 +2441,7 @@ function parDoRelatorio(r) {
     const ini = v['B' + row], fim = v['C' + row]; if (typeof ini !== 'number' || typeof fim !== 'number') continue;
     let min = (fim - ini) * 1440; if (min <= 0) min += 1440;
     const codigo = EVENT_CODE[desc] || '';
+    if (codigo === 'HE') continue;   // horas efetivas (Operação, Reprocessamento): não é parada
     out.push({ data: r.data, turno: r.turno, desc, codigo, tipo: parTipo(codigo), min: Math.round(min * 100) / 100, ini,
       usina: String(v['H' + row] ?? '').trim(), equip: String(v['Y' + row] ?? '').trim() });
   }
@@ -2447,13 +2449,15 @@ function parDoRelatorio(r) {
 }
 /* Junta paradas e horas de uma lista de relatórios ({id, data, turno, vals, stamp, salvo}). */
 function parResumo(reps, filtroUsina) {
-  const R = { paradas: [], hc: 0, cm: 0, n: 0, tipo: { op: 0, man: 0, out: 0 }, hi: 0, hm: 0, hpo: 0, desc: new Map(), equip: new Map(), dia: new Map(), datas: new Set() };
+  const R = { paradas: [], hc: 0, cm: 0, n: 0, tipo: { op: 0, man: 0, out: 0 }, hi: 0, hm: 0, hpo: 0, desc: new Map(), equip: new Map(), dia: new Map(), datas: new Set(), semDesc: 0, semDescMin: 0 };
   /* programa por hora de concentrado, por mês; sem plano carregado para o mês de alguma parada, a perda fica em branco */
   const thMes = new Map(), thPlano = data => { const k = String(data ?? '').slice(0, 7); if (!thMes.has(k)) { const p = prodProgDia(k + '-01'); thMes.set(k, p && p.conc !== null ? p.conc / 24 : null); } return thMes.get(k); };
   let semPlano = false; R.perdaMan = 0; R.perdaOp = 0;
   for (const r of reps) {
     const x = bxExtract(r), cm = x.eng.cell('M', 'G18');
     R.n++; R.hc += x.turnoH; if (typeof cm === 'number' && isFinite(cm)) R.cm += cm; R.datas.add(r.data);
+    const v = r.vals || {};
+    for (let row = 36; row <= 44; row++) if (!(typeof v['D' + row] === 'string' && v['D' + row].trim()) && typeof v['B' + row] === 'number' && typeof v['C' + row] === 'number' && (!filtroUsina || String(v['H' + row] ?? '').trim() === filtroUsina)) { let m = (v['C' + row] - v['B' + row]) * 1440; if (m <= 0) m += 1440; R.semDesc++; R.semDescMin += m; }
     for (const p of parDoRelatorio(r)) {
       if (filtroUsina && p.usina !== filtroUsina) continue;
       R.paradas.push(p); R.tipo[p.tipo] += p.min;
@@ -2541,7 +2545,7 @@ function renderParadas() {
   if (resto.length) { const min = resto.reduce((a, d) => a + d.min, 0); top.push({ nome: `Outras ${resto.length} ocorrências`, min, n: resto.reduce((a, d) => a + d.n, 0), tipo: null, op: resto.filter(d => d.tipo === 'op').reduce((a, d) => a + d.min, 0), man: resto.filter(d => d.tipo === 'man').reduce((a, d) => a + d.min, 0), out: resto.filter(d => d.tipo === 'out').reduce((a, d) => a + d.min, 0), acum: 1 }); }
   const tiposUsados = PAR_TIPOS.map(t => t.k).filter(k => R.tipo[k] > 0);
   bxHTML($('#pa-pareto'), parLegenda(tiposUsados) + parBarras(top, top[0].min, { titulo: 'Principais paradas', col: 'Descrição do evento', acum: true }) +
-    '<p class="hint">Em negrito, as ocorrências que somam até 80% do tempo parado (Pareto).</p>');
+    '<p class="hint">Em negrito, as ocorrências que somam até 80% do tempo parado (Pareto).' + (R.semDesc ? ` ${R.semDesc} ${R.semDesc === 1 ? 'linha tem' : 'linhas têm'} início e término mas não têm descrição do evento (${parH(R.semDescMin)}) e ${R.semDesc === 1 ? 'ficou' : 'ficaram'} de fora: sem a descrição, não dá para saber o tipo da parada.` : '') + '</p>');
   /* 2. Por equipamento */
   const TOPE = R.equipes.length === 11 ? 11 : 10, eq = R.equipes.slice(0, TOPE), eqR = R.equipes.slice(TOPE);
   if (eqR.length) { const o = { nome: `Outros ${eqR.length} equipamentos`, op: 0, man: 0, out: 0, min: 0, n: 0 }; for (const e of eqR) for (const k of ['op', 'man', 'out', 'min', 'n']) o[k] += e[k]; eq.push(o); }
@@ -2631,6 +2635,137 @@ function parPdfPagina(d, R, o) {
     if (x) { let top2 = base; for (const t of PAR_TIPOS) if (x[t.k] > 0) { const h = chH * x[t.k] / topo; d.rect(bx, top2 - h, bw, Math.max(0.6, h - 0.8), t.pdf, null); top2 -= h; } }
     d.text(String(+dia.slice(8)), cx + cw / 2, base + 8, { size: 5.6, color: MUTED, align: 'center' });
   });
+}
+
+/* ===== Importar relatórios de turno de planilhas (.xlsx) =====
+   Lê planilhas no formato da folha MODELO (o próprio Relatório de turno digitado, ou o Excel baixado do app):
+   cada aba com data e turno preenchidos vira um relatório salvo, como se tivesse sido lançado no app.
+   Só os valores das células de digitação entram; as fórmulas do app refazem os cálculos. */
+
+/* Todas as abas de um .xlsx: nome e valores (o valor gravado da célula; numa fórmula, o último resultado). */
+async function xlsxAbas(buf) {
+  const zip = await JSZip.loadAsync(buf);
+  const un = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (m, d) => String.fromCharCode(+d)).replace(/&#x([0-9a-f]+);/gi, (m, h) => String.fromCharCode(parseInt(h, 16))).replace(/&amp;/g, '&');
+  const ss = zip.file('xl/sharedStrings.xml'), strings = [];
+  if (ss) { const x = await ss.async('string'); for (const m of x.matchAll(/<si>([\s\S]*?)<\/si>/g)) strings.push(un([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t => t[1]).join(''))); }
+  const wb = zip.file('xl/workbook.xml'), rels = zip.file('xl/_rels/workbook.xml.rels');
+  if (!wb || !rels) throw new Error('formato');
+  const wbx = await wb.async('string'), rx = await rels.async('string'), alvo = {};
+  for (const m of rx.matchAll(/<Relationship\b([^>]*)\/?>/g)) { const id = (/\bId="([^"]+)"/.exec(m[1]) || [])[1], t = (/\bTarget="([^"]+)"/.exec(m[1]) || [])[1]; if (id && t) alvo[id] = t.replace(/^\/?xl\//, '').replace(/^\//, ''); }
+  const abas = [];
+  for (const m of wbx.matchAll(/<sheet\b([^>]*)\/?>/g)) {
+    const nome = un((/\bname="([^"]*)"/.exec(m[1]) || [])[1] || ''), rid = (/\br:id="([^"]+)"/.exec(m[1]) || [])[1], f = rid && alvo[rid] ? zip.file('xl/' + alvo[rid]) : null;
+    if (!f) continue;
+    const xml = await f.async('string'), cells = new Map();
+    for (const c of xml.matchAll(/<c r="([A-Z]+\d+)"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+      const inner = c[3] || '', t = (/\st="(\w+)"/.exec(c[2]) || [])[1], vm = /<v>([\s\S]*?)<\/v>/.exec(inner);
+      let v = null;
+      if (vm) { if (t === 's') v = strings[+vm[1]] ?? ''; else if (t === 'str') v = un(vm[1]); else if (t === 'e') v = null; else if (t === 'b') v = vm[1] === '1'; else { const n = Number(vm[1]); v = Number.isFinite(n) ? n : null; } }
+      else if (t === 'inlineStr') v = un([...inner.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(x => x[1]).join(''));
+      if (v !== null && v !== '') cells.set(c[1], v);
+    }
+    abas.push({ nome, oculta: /\bstate="(hidden|veryHidden)"/.test(m[1]), cells });
+  }
+  return abas;
+}
+const impNorm = s => String(s ?? '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
+/* Uma aba está no formato do relatório quando os títulos fixos da folha MODELO estão nas mesmas células. */
+function impEhModelo(cells) {
+  const marcas = ['C7', 'G7', 'B20', 'B34', 'D35', 'Q2', 'T2'].filter(a => typeof WB.M.v[a] === 'string' && WB.M.v[a].trim());
+  const ok = marcas.filter(a => impNorm(cells.get(a)) === impNorm(WB.M.v[a])).length;
+  return ok >= Math.min(4, marcas.length);
+}
+/* Converte o valor da planilha para o que o app guarda em cada célula de digitação. */
+function impValor(a, v) {
+  const k = kindOf(a);
+  if (v === null || v === undefined || v === '') return null;
+  if (k.t === 'date') {
+    if (typeof v === 'number' && v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10);
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(String(v).trim()); if (m) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+    const i = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v).trim()); return i ? i[1] + '-' + i[2] + '-' + i[3] : null;
+  }
+  if (k.t === 'time') {
+    if (typeof v === 'number' && isFinite(v) && v >= 0) return ((v % 1) + 1) % 1;
+    return timeToFrac(String(v).trim());
+  }
+  if (k.t === 'num') {
+    let n = typeof v === 'number' ? v : bxNum(String(v));
+    if (!Number.isFinite(n)) return null;
+    if (k.pct && typeof v === 'string' && (v.includes('%') || n > 1)) n = n / 100;
+    if (a === 'AD11' && n < 1) return null;   // Pedida FE% em formato de hora (03:00) nas planilhas antigas: não é um teor
+    return n;
+  }
+  if (k.t === 'list' && k.list === 'nivel') { const n = typeof v === 'number' ? v : bxNum(String(v)); return Number.isFinite(n) ? n : String(v).trim(); }
+  if (typeof v === 'boolean') return null;
+  const s = typeof v === 'number' ? genNum(v) : String(v).trim();
+  if (a === 'U2' || a === 'U3') return s.toUpperCase();
+  return s || null;
+}
+/* Relatórios encontrados nas abas de um arquivo. */
+function impLer(abas, arquivo) {
+  const achados = [], ignoradas = [];
+  for (const aba of abas) {
+    if (!impEhModelo(aba.cells)) continue;
+    const vals = {};
+    for (const a of INPUTS) {
+      if (/^AA(9|1[0-7])$/.test(a) && impNorm(aba.cells.get('AA7')) !== 'tc-07b') continue;   // TC-07B só existe no Excel baixado do app
+      const v = impValor(a, aba.cells.get(a)); if (v !== null && v !== undefined) vals[a] = v;
+    }
+    if (!vals.R3 || !vals.U2) { ignoradas.push(`${aba.nome} (${!vals.R3 ? 'sem data' : 'sem turno'})`); continue; }
+    if (!['Z', 'X', 'Y'].includes(vals.U2)) { ignoradas.push(`${aba.nome} (turno "${vals.U2}")`); continue; }
+    achados.push({ id: vals.R3 + '_' + vals.U2, vals: cleanVals(vals), aba: aba.nome, arquivo });
+  }
+  return { achados, ignoradas };
+}
+async function impArquivos(files) {
+  if (!podeEditar()) { toast('Só técnicos e supervisores importam relatórios.', true); return; }
+  const porId = new Map(), ignoradas = [], semModelo = [];
+  let repetidos = 0;
+  for (const f of files) {
+    let abas;
+    try { abas = await xlsxAbas(await f.arrayBuffer()); } catch (e) { semModelo.push(f.name); continue; }
+    const r = impLer(abas, f.name);
+    if (!r.achados.length && !r.ignoradas.length) semModelo.push(f.name);
+    for (const x of r.achados) { if (porId.has(x.id)) repetidos++; porId.set(x.id, x); }
+    ignoradas.push(...r.ignoradas.map(s => `${f.name}: ${s}`));
+  }
+  const lista = [...porId.values()].sort((a, b) => a.id.localeCompare(b.id));
+  if (!lista.length) {
+    toast(semModelo.length ? `Não encontrei relatórios de turno em ${semModelo.join(', ')}. Cada aba precisa estar no formato da folha MODELO, com data e turno preenchidos.` : 'Nenhuma aba tinha data e turno preenchidos.', true);
+    return;
+  }
+  const existentes = lista.filter(x => store.docs.some(d => d.id === x.id));
+  const de = lista[0].vals.R3, ate = lista[lista.length - 1].vals.R3;
+  let msg = `Importar ${lista.length} ${lista.length === 1 ? 'relatório' : 'relatórios'} de turno, de ${brDate(de)} a ${brDate(ate)}? Eles entram em Relatórios salvos como se tivessem sido lançados no app.`;
+  if (ignoradas.length) msg += ` ${ignoradas.length} ${ignoradas.length === 1 ? 'aba ficou' : 'abas ficaram'} de fora por falta de data ou turno.`;
+  if (repetidos) msg += ` ${repetidos} ${repetidos === 1 ? 'aba repetia' : 'abas repetiam'} data e turno de outra; vale a última lida.`;
+  if (!(await ask(msg, 'Importar'))) return;
+  let substituir = true;
+  if (existentes.length) substituir = await ask(`${existentes.length} ${existentes.length === 1 ? 'desses turnos já tem relatório salvo' : 'desses turnos já têm relatório salvo'} (${existentes.slice(0, 4).map(x => brDate(x.vals.R3) + ' ' + x.vals.U2).join(', ')}${existentes.length > 4 ? '…' : ''}). Substituir pelo que está na planilha? Em Cancelar, esses ficam como estão e só os novos entram.`, 'Substituir');
+  const agora = new Date().toISOString(), fila = lista.filter(x => substituir || !existentes.includes(x));
+  let feitos = 0, falhas = 0;
+  const local = !(store.mode === 'db' && store.db), all = local ? (LS.get('rt-reports') || {}) : null;
+  for (const x of fila) {
+    const e = bxExtract({ id: '__imp', data: x.vals.R3, turno: x.vals.U2, vals: x.vals, stamp: '', salvo: false }).eng;
+    const body = {
+      data: x.vals.R3, turno: x.vals.U2, letra: x.vals.U3 ?? null, operador: x.vals.R2 ?? null, vals: x.vals, status: 'enviado',
+      salvoEm: agora, por: store.uid ?? null, origem: ('Importado de ' + x.arquivo + ' · aba ' + x.aba).slice(0, 200),
+      resumo: { rom: numOrNull(e.cell('M', 'AB18')), cmag: numOrNull(e.cell('M', 'G18')), rec: numOrNull(e.cell('M', 'W18')) },
+    };
+    try {
+      if (local) all[x.id] = body; else await withTimeout(store.db.collection(COLECAO).doc(x.id).set(body));
+      feitos++;
+    } catch (err) { falhas++; }
+    if (!local && feitos % 10 === 0) toast(`Importando… ${feitos} de ${fila.length}`);
+  }
+  if (local) { LS.set('rt-reports', all); store.docs = localDocs(); }
+  BX.engines.clear(); renderSaved();
+  toast(falhas ? `${feitos} relatórios importados; ${falhas} não puderam ser gravados. Tente importar de novo.` : `${feitos} ${feitos === 1 ? 'relatório importado' : 'relatórios importados'}${fila.length < lista.length ? `; ${lista.length - fila.length} já existiam e ficaram como estavam` : ''}.`, !!falhas);
+}
+function impInit() {
+  const b = $('#sv-import'), f = $('#sv-file');
+  b.addEventListener('click', () => f.click());
+  f.addEventListener('change', async () => { const files = [...(f.files || [])]; f.value = ''; if (files.length) await impArquivos(files); });
 }
 
 /* ===== PDF do relatório de turno: gerado na própria página, sem biblioteca externa =====
@@ -3371,6 +3506,7 @@ function renderSaved() {
     td(tr, brDate(d.data)); td(tr, String(d.turno ?? '')); td(tr, String(d.letra ?? '')); td(tr, String(d.operador ?? ''));
     td(tr, num(r.rom, 1), 'num'); td(tr, num(r.cmag, 1), 'num'); td(tr, num(r.rec, 1, true), 'num');
     const st = td(tr, ''); const chip = document.createElement('span'); chip.className = 'chip' + (d.pendente ? ' dirty' : d.status === 'enviado' ? ' sent' : ''); chip.textContent = (d.status === 'enviado' ? 'Enviado' : 'Rascunho') + (d.pendente ? ' · aguardando conexão' : ''); st.appendChild(chip);
+    if (typeof d.origem === 'string' && d.origem) { const im = document.createElement('span'); im.className = 'badge'; im.textContent = 'Importado'; im.title = d.origem; st.appendChild(im); }
     td(tr, typeof d.salvoEm === 'string' && !isNaN(Date.parse(d.salvoEm)) ? new Date(d.salvoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '');
     const act = td(tr, ''), box = document.createElement('div'); box.className = 'rowact';
     const b1 = document.createElement('button'); b1.className = 'btn small'; b1.textContent = 'Abrir'; b1.addEventListener('click', () => openDoc(d.id)); box.appendChild(b1);
@@ -3392,6 +3528,7 @@ function renderSaved() {
   $('#sv-note').textContent = note;
   if (store.needLogin && !store.fbError) $('#sv-empty').textContent = 'Nada para mostrar antes do login.';
   const n = $('#tab-count'); n.textContent = docs.length ? ' (' + docs.length + ')' : '';
+  $('#sv-import').hidden = !(podeEditar() && typeof JSZip !== 'undefined'); $('#sv-imp-hint').hidden = $('#sv-import').hidden;
   renderLacuna(); renderProducao(); renderParadas();
 }
 const COLECAO = 'relatorios';
@@ -3695,7 +3832,7 @@ function go(name, noHash) {
 /* ---------- Início ---------- */
 function start() {
   cadInit();
-  buildHead(); buildDados(); buildCond(); buildPrevias(); buildOrg(); buildParadas(); buildOcorr(); cadRender(); buildFormulas(); bxInit(); prodInit(); parInit(); mailInit();
+  buildHead(); buildDados(); buildCond(); buildPrevias(); buildOrg(); buildParadas(); buildOcorr(); cadRender(); buildFormulas(); bxInit(); prodInit(); parInit(); mailInit(); impInit();
   calcEls = Array.from(document.querySelectorAll('[data-c]'));
   const draft = LS.get('rt-draft');
   if (draft && draft.vals && typeof draft.vals === 'object') load(draft); else syncAll();

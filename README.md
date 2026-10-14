@@ -24,6 +24,13 @@ Abra o `index.html` no navegador. Ele funciona sozinho, sem instalar nada.
 - **Enviar relatório**: salva o turno como Enviado, gera o PDF e monta o e-mail para a lista fixa de destinatários
   (veja E-mail do relatório).
 
+- **Importar planilhas (.xlsx)** (em Relatórios salvos, só técnicos e supervisores): lê arquivos no formato do
+  Relatório de turno digitado, uma aba por turno como a folha MODELO (ou o Excel baixado do app). Cada aba com data e
+  turno preenchidos vira um relatório salvo, como se tivesse sido lançado no app: entram só os valores das células de
+  digitação (nas células com fórmula, o resultado) e os cálculos são refeitos pelas fórmulas do app. Abas sem data ou
+  sem turno ficam de fora; se o turno já tem relatório salvo, o app pergunta se substitui. Os importados aparecem com
+  a marca Importado e valem para Produção, Paradas, Boxplot e PDF como qualquer outro.
+
 Sem Firebase configurado, os relatórios salvos ficam só no navegador de quem preencheu.
 
 ## Ligar ao Firebase
@@ -108,6 +115,7 @@ src/cadastros.js cadastros editáveis da aba Instruções e cadastros
 src/plano.js     aba Produção: Plano de Produção mês a mês (plano × real) e importação da planilha do plano
 src/producao.js  aba Produção: produção diária, por hora e do mês contra o programa
 src/paradas.js   aba Paradas e a página de paradas do PDF
+src/importar.js  importação de relatórios de turno a partir de planilhas .xlsx
 src/pdf.js       PDF do relatório, gerado na própria página, sem biblioteca externa
 src/data.json    valores e fórmulas lidos da planilha
 src/extract.py   gera o data.json a partir da planilha
@@ -192,6 +200,8 @@ usina e equipamento), filtrados por período, turno e usina:
 - Horas paradas por dia e a tabela de ocorrências por dia.
 
 O tipo vem do código da descrição do evento: HAO e HIO = operação, HMC e HMP = manutenção, os demais = outras.
+Descrições com código HE (horas efetivas, como Operação) não contam como parada, e linhas sem descrição ficam de fora
+(a aba avisa quantas são).
 Perda de produção = concentrado ÷ horas trabalhadas × horas paradas de cada tipo.
 
 O **PDF do relatório de turno** termina com uma página destes gráficos para o mês do relatório, do dia 1 até a data
