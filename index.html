@@ -212,7 +212,8 @@ dialog#login[open] { display: flex; flex-direction: column; justify-content: fle
 dialog#login::backdrop { background: #efede1; }
 dialog#login p { margin-bottom: 0; }
 #login-form { width: min(24rem, 100%); padding: 20px; border: 1px solid var(--line-strong); border-radius: 10px; background: color-mix(in srgb, var(--surface) 90%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); box-shadow: 0 12px 32px rgba(0, 0, 0, .2); }
-#login-form .actions { justify-content: space-between; }
+#login-form .actions { justify-content: stretch; }
+#login-form .actions .btn { flex: 1; }
 @media (orientation: portrait) { dialog#login { background: linear-gradient(transparent 68%, #efede1 82%) center top / 150vw 150vw no-repeat, #efede1 url("fundo-login.jpg") center top / 150vw auto no-repeat; } }
 
 /* Aba Boxplot */
@@ -609,11 +610,11 @@ table.pa-tab th[scope="row"] { font-weight: 500; white-space: nowrap; }
 <dialog id="login" aria-labelledby="login-t">
   <form id="login-form" class="stack">
     <h2 id="login-t">Entrar</h2>
-    <p class="hint">Use o e-mail e a senha cadastrados. Sem entrar, dá para preencher, mas não para salvar.</p>
+    <p class="hint">Use o e-mail e a senha cadastrados.</p>
     <label class="field"><span>E-mail</span><input type="email" id="login-email" autocomplete="username" required></label>
     <label class="field"><span>Senha</span><input type="password" id="login-senha" autocomplete="current-password" required></label>
     <p class="err" id="login-erro" role="alert" hidden></p>
-    <div class="actions"><button type="button" class="btn" id="login-cancel">Continuar sem entrar</button><button class="btn primary" id="login-ok">Entrar</button></div>
+    <div class="actions"><button class="btn primary" id="login-ok">Entrar</button></div>
   </form>
 </dialog>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -3488,7 +3489,6 @@ async function initFirebase() {
   };
   if (!login) { store.canEdit = true; connect(); return; }
   store.fb = { signIn: (email, senha) => m.au.signInWithEmailAndPassword(auth, email, senha), signOut: () => m.au.signOut(auth) };
-  let asked = false;
   m.au.onAuthStateChanged(auth, u => {
     store.user = u ? (u.email || 'conectado') : null; store.uid = u ? u.uid : null;
     store.papel = ''; store.canEdit = false;
@@ -3509,7 +3509,7 @@ async function initFirebase() {
         cadRender(); calcEls = Array.from(document.querySelectorAll('[data-c]')); recalc(); renderSaved(); updateStatus();
       });
     }
-    else { store.needLogin = true; store.canWrite = false; store.fbError = null; disconnect(); if (!asked) { asked = true; openLogin(); } }
+    else { store.needLogin = true; store.canWrite = false; store.fbError = null; disconnect(); openLogin(); }
     renderSaved(); updateStatus();
   });
 }
@@ -3728,7 +3728,9 @@ function start() {
   $('#b-pdf').addEventListener('click', () => downloadPdf(state.vals, state.dirty ? 'Não salvo' : state.status === 'enviado' ? 'Enviado' : state.status === 'rascunho' ? 'Rascunho' : 'Não salvo'));
   $('#b-conta').addEventListener('click', account);
   $('#login-form').addEventListener('submit', submitLogin);
-  $('#login-cancel').addEventListener('click', () => $('#login').close());
+  /* O login é obrigatório: Esc não fecha a tela de entrada. */
+  $('#login').addEventListener('cancel', e => e.preventDefault());
+  $('#login').addEventListener('close', () => { if (store.needLogin) openLogin(); });
   go((location.hash || '').replace('#', '') || 'relatorio', true);
   showCell('W18', true);
   initStore();
