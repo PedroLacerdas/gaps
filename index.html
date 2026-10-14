@@ -206,8 +206,14 @@ dialog .actions { justify-content: flex-end; }
 .stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .kpi .v:empty::before { content: "–"; color: var(--muted); font-weight: 500; }
 dialog h2 { font-family: var(--f-display); font-weight: 700; font-size: 20px; letter-spacing: .03em; }
-dialog#login { width: min(24rem, calc(100vw - 32px)); }
+/* Tela de login: ocupa a janela toda, com a imagem da empresa de fundo e o formulário embaixo do logotipo */
+dialog#login { width: 100vw; height: 100vh; height: 100dvh; max-width: none; max-height: none; margin: 0; border: 0; border-radius: 0; padding: 16px 16px max(5vh, 16px); background: #efede1 url("fundo-login.jpg") center 50% / cover no-repeat; color: var(--ink); }
+dialog#login[open] { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+dialog#login::backdrop { background: #efede1; }
 dialog#login p { margin-bottom: 0; }
+#login-form { width: min(24rem, 100%); padding: 20px; border: 1px solid var(--line-strong); border-radius: 10px; background: color-mix(in srgb, var(--surface) 90%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); box-shadow: 0 12px 32px rgba(0, 0, 0, .2); }
+#login-form .actions { justify-content: space-between; }
+@media (orientation: portrait) { dialog#login { background: linear-gradient(transparent 68%, #efede1 82%) center top / 150vw 150vw no-repeat, #efede1 url("fundo-login.jpg") center top / 150vw auto no-repeat; } }
 
 /* Aba Boxplot */
 .panel > h3 { font-family: var(--f-display); font-weight: 600; font-size: 15px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
@@ -603,11 +609,11 @@ table.pa-tab th[scope="row"] { font-weight: 500; white-space: nowrap; }
 <dialog id="login" aria-labelledby="login-t">
   <form id="login-form" class="stack">
     <h2 id="login-t">Entrar</h2>
-    <p class="hint">Use o e-mail e a senha cadastrados no Firebase do projeto. Sem entrar, dá para preencher, mas não para salvar.</p>
+    <p class="hint">Use o e-mail e a senha cadastrados. Sem entrar, dá para preencher, mas não para salvar.</p>
     <label class="field"><span>E-mail</span><input type="email" id="login-email" autocomplete="username" required></label>
     <label class="field"><span>Senha</span><input type="password" id="login-senha" autocomplete="current-password" required></label>
     <p class="err" id="login-erro" role="alert" hidden></p>
-    <div class="actions"><button type="button" class="btn" id="login-cancel">Agora não</button><button class="btn primary" id="login-ok">Entrar</button></div>
+    <div class="actions"><button type="button" class="btn" id="login-cancel">Continuar sem entrar</button><button class="btn primary" id="login-ok">Entrar</button></div>
   </form>
 </dialog>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
