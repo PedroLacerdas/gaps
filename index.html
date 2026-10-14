@@ -3249,6 +3249,8 @@ function updateStatus() {
   else if (state.status === 'enviado') { chip.textContent = 'Enviado'; chip.classList.add('sent'); txt.textContent = `Gravado em ${when}.`; }
   else if (state.status === 'rascunho') { chip.textContent = 'Rascunho salvo'; txt.textContent = `Gravado em ${when}.`; }
   else { chip.textContent = 'Novo relatório'; txt.textContent = 'Modelo em branco da planilha.'; }
+  const nf = Object.keys(fila()).length;
+  if (nf) txt.textContent += ' ' + (nf === 1 ? '1 relatório aguardando conexão para ir ao Firebase.' : nf + ' relatórios aguardando conexão para ir ao Firebase.');
   const off = busy || !store.canWrite;
   $('#b-salvar').disabled = off; $('#b-enviar').disabled = off;
   $('#b-xlsx').hidden = !((store.downloads || store.standalone) && typeof JSZip !== 'undefined');
@@ -3271,7 +3273,7 @@ async function save(status) {
   if (!data || !turno) { toast('Informe a data e o turno antes de salvar.', true); (document.getElementById(!data ? 'c-R3' : 'c-U2') || {}).focus?.(); return; }
   const id = data + '_' + turno;
   if (!/^[A-Za-z0-9_\-.~:@+]+$/.test(id)) { toast('Data ou turno inválidos.', true); return; }
-  if (state.id !== id && store.docs.some(d => d.id === id)) {
+  if (state.id !== id && listaDocs().some(d => d.id === id)) {
     if (!(await ask(`Já existe um relatório de ${brDate(data)}, turno ${turno}. Substituir pelo que está na tela?`, 'Substituir'))) return;
   }
   const finalStatus = status === 'enviado' || state.status === 'enviado' ? 'enviado' : 'rascunho';
@@ -3281,26 +3283,41 @@ async function save(status) {
     resumo: { rom: numOrNull(engine.cell('M', 'AB18')), cmag: numOrNull(engine.cell('M', 'G18')), rec: numOrNull(engine.cell('M', 'W18')) },
   };
   busy = true; updateStatus();
+  let pendente = false;
   try {
-    if (store.mode === 'db') await withTimeout(store.db.collection(COLECAO).doc(id).set(body));
-    else {
+    if (store.mode === 'db') {
+      /* Sem conexão: nem tenta o Firebase; o relatório vai para a fila deste navegador. */
+      if (store.backend === 'firebase' && !navigator.onLine) throw { code: 'unavailable' };
+      await withTimeout(store.db.collection(COLECAO).doc(id).set(body));
+    } else {
       const all = LS.get('rt-reports') || {}; all[id] = body; LS.set('rt-reports', all);
-      store.docs = Object.entries(all).map(([k, d]) => Object.assign({ id: k }, d)); renderSaved();
+      store.docs = Object.entries(all).map(([k, d]) => Object.assign({ id: k }, d));
+      /* Firebase configurado, mas não carregou (sem internet ao abrir): também entra na fila para subir depois. */
+      if (store.fbConfigured) { filaAdd(id, body); pendente = true; }
+      renderSaved();
     }
   } catch (e) {
-    busy = false; updateStatus();
-    toast(saveError(e), true);
-    return;
+    const code = e && e.code;
+    if (store.backend === 'firebase' && (code === 'timeout' || code === 'unavailable')) { filaAdd(id, body); pendente = true; renderSaved(); }
+    else {
+      busy = false; updateStatus();
+      toast(saveError(e), true);
+      return;
+    }
   }
   busy = false;
   state.id = id; state.status = finalStatus; state.savedAt = body.salvoEm; state.dirty = false;
   LS.set('rt-draft', { vals: state.vals, id: state.id, status: state.status, savedAt: state.savedAt, dirty: false });
   updateStatus();
-  if (status === 'enviado' && (store.downloads || store.standalone)) {
-    toast('Relatório enviado e salvo. O PDF foi gerado para anexar ao e-mail.');
-    await downloadPdf(state.vals, 'Enviado');
-    mailDialog(state.vals, true);
-  } else toast(status === 'enviado' ? 'Relatório enviado. Ele aparece como Enviado em Relatórios salvos.' : 'Relatório salvo.');
+  if (status !== 'enviado') { toast(pendente ? 'Sem conexão: o rascunho ficou guardado neste aparelho e vai para o Firebase quando a conexão voltar.' : 'Relatório salvo.'); return; }
+  /* Enviado: gera o PDF e o e-mail, limpa a tela e desconecta. Sem conexão, desconecta só depois que a fila subir. */
+  const vals = state.vals, sair = store.fb && store.user;
+  toast((pendente ? 'Sem conexão: o relatório ficou guardado neste aparelho e será enviado assim que a conexão voltar.' : 'Relatório enviado e salvo.') +
+    (sair ? (pendente ? ' A sessão termina depois do envio.' : ' A sessão foi encerrada.') : ''));
+  if (store.downloads || store.standalone) { await downloadPdf(vals, 'Enviado'); mailDialog(vals, true); }
+  load({ vals: TEMPLATE, id: null, status: 'novo', savedAt: null, dirty: false });
+  LS.set('rt-draft', null);
+  if (pendente) sairPendente = !!sair; else sairDepois();
 }
 function load(obj) {
   state.vals = Object.assign({}, cleanVals(obj.vals));
@@ -3317,17 +3334,19 @@ async function newReport() {
   toast('Relatório novo, com os valores do modelo.');
 }
 async function openDoc(id) {
-  const d = store.docs.find(x => x.id === id); if (!d) return;
+  const d = listaDocs().find(x => x.id === id); if (!d) return;
   if (state.dirty && !(await ask('Há alterações não salvas no relatório aberto. Abrir outro mesmo assim?', 'Abrir'))) return;
   load({ vals: d.vals, id: d.id, status: d.status, savedAt: d.salvoEm, dirty: false });
   LS.set('rt-draft', { vals: state.vals, id: state.id, status: state.status, savedAt: state.savedAt, dirty: false });
   go('relatorio');
 }
 async function deleteDoc(id) {
-  const d = store.docs.find(x => x.id === id); if (!d) return;
+  const d = listaDocs().find(x => x.id === id); if (!d) return;
   if (!(await ask(`Excluir o relatório de ${brDate(d.data)}, turno ${d.turno}? Não dá para desfazer.`, 'Excluir'))) return;
+  const f = fila(); if (f[id]) { delete f[id]; LS.set('rt-fila', f); }
   try {
-    if (store.mode === 'db') await withTimeout(store.db.collection(COLECAO).doc(id).delete());
+    if (d.pendente && !store.docs.some(x => x.id === id)) renderSaved();
+    else if (store.mode === 'db') await withTimeout(store.db.collection(COLECAO).doc(id).delete());
     else { const all = LS.get('rt-reports') || {}; delete all[id]; LS.set('rt-reports', all); store.docs = Object.entries(all).map(([k, x]) => Object.assign({ id: k }, x)); renderSaved(); }
   } catch (e) { toast('Não foi possível excluir agora.', true); return; }
   if (state.id === id) { state.id = null; state.status = 'novo'; state.savedAt = null; state.dirty = true; updateStatus(); }
@@ -3335,14 +3354,14 @@ async function deleteDoc(id) {
 }
 function renderSaved() {
   const tb = $('#sv-body'); tb.textContent = '';
-  const docs = store.docs.filter(d => d && typeof d.data === 'string').sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : String(a.turno).localeCompare(String(b.turno))));
+  const docs = listaDocs().filter(d => d && typeof d.data === 'string').sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : String(a.turno).localeCompare(String(b.turno))));
   const td = (tr, text, cls) => { const c = document.createElement('td'); if (cls) c.className = cls; c.textContent = text; tr.appendChild(c); return c; };
   const num = (v, d, pct) => (typeof v === 'number' && isFinite(v) ? (pct ? fixedNum(v * 100, 1) + '%' : fixedNum(v, d, true)) : '');
   for (const d of docs) {
     const tr = document.createElement('tr'), r = d.resumo && typeof d.resumo === 'object' ? d.resumo : {};
     td(tr, brDate(d.data)); td(tr, String(d.turno ?? '')); td(tr, String(d.letra ?? '')); td(tr, String(d.operador ?? ''));
     td(tr, num(r.rom, 1), 'num'); td(tr, num(r.cmag, 1), 'num'); td(tr, num(r.rec, 1, true), 'num');
-    const st = td(tr, ''); const chip = document.createElement('span'); chip.className = 'chip' + (d.status === 'enviado' ? ' sent' : ''); chip.textContent = d.status === 'enviado' ? 'Enviado' : 'Rascunho'; st.appendChild(chip);
+    const st = td(tr, ''); const chip = document.createElement('span'); chip.className = 'chip' + (d.pendente ? ' dirty' : d.status === 'enviado' ? ' sent' : ''); chip.textContent = (d.status === 'enviado' ? 'Enviado' : 'Rascunho') + (d.pendente ? ' · aguardando conexão' : ''); st.appendChild(chip);
     td(tr, typeof d.salvoEm === 'string' && !isNaN(Date.parse(d.salvoEm)) ? new Date(d.salvoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '');
     const act = td(tr, ''), box = document.createElement('div'); box.className = 'rowact';
     const b1 = document.createElement('button'); b1.className = 'btn small'; b1.textContent = 'Abrir'; b1.addEventListener('click', () => openDoc(d.id)); box.appendChild(b1);
@@ -3368,6 +3387,37 @@ function renderSaved() {
 }
 const COLECAO = 'relatorios';
 const localDocs = () => Object.entries(LS.get('rt-reports') || {}).map(([k, d]) => Object.assign({ id: k }, d));
+/* Fila de relatórios salvos sem conexão: fica neste navegador e sobe para o Firebase quando a conexão volta e há alguém logado. */
+const fila = () => LS.get('rt-fila') || {};
+function filaAdd(id, body) { const f = fila(); f[id] = body; LS.set('rt-fila', f); }
+function listaDocs() {
+  const f = fila();
+  return store.docs.filter(d => !f[d.id]).concat(Object.entries(f).map(([k, d]) => Object.assign({ id: k, pendente: true }, d)));
+}
+let enviandoFila = false, sairPendente = false;
+async function enviarFila() {
+  if (enviandoFila || store.backend !== 'firebase' || !store.db || !navigator.onLine) return;
+  const f = fila(), ids = Object.keys(f);
+  if (!ids.length) { if (sairPendente) sairDepois(); return; }
+  enviandoFila = true; let n = 0;
+  for (const id of ids) {
+    try { await withTimeout(store.db.collection(COLECAO).doc(id).set(f[id])); }
+    catch (e) { break; }
+    /* Só tira da fila se ninguém regravou o mesmo relatório enquanto ele subia. */
+    const g = fila(); if (g[id] && g[id].salvoEm === f[id].salvoEm) { delete g[id]; LS.set('rt-fila', g); }
+    n++;
+  }
+  enviandoFila = false; renderSaved(); updateStatus();
+  if (n) toast(n === 1 ? 'Relatório pendente enviado ao Firebase.' : n + ' relatórios pendentes enviados ao Firebase.');
+  if (!Object.keys(fila()).length && sairPendente) sairDepois();
+}
+/* Encerra a sessão depois de enviar um relatório; se o e-mail do relatório estiver aberto, espera ele fechar. */
+function sairDepois() {
+  sairPendente = false;
+  if (!store.fb || !store.user) return;
+  const sair = () => store.fb.signOut().catch(() => toast('Não foi possível encerrar a sessão agora.', true));
+  const m = $('#mail'); if (m.open) m.addEventListener('close', sair, { once: true }); else sair();
+}
 function withTimeout(promise) {
   if (store.backend !== 'firebase') return promise;
   return Promise.race([promise, new Promise((_, no) => setTimeout(() => no({ code: 'timeout' }), 15000))]);
@@ -3426,6 +3476,7 @@ async function initFirebase() {
     });
     bxSubscribe();
     renderSaved(); updateStatus();
+    enviarFila();
   };
   if (!login) { store.canEdit = true; connect(); return; }
   store.fb = { signIn: (email, senha) => m.au.signInWithEmailAndPassword(auth, email, senha), signOut: () => m.au.signOut(auth) };
@@ -3667,6 +3718,8 @@ function start() {
   go((location.hash || '').replace('#', '') || 'relatorio', true);
   showCell('W18', true);
   initStore();
+  window.addEventListener('online', enviarFila);
+  setInterval(enviarFila, 60000);
   try {
     const hot = window.claude && window.claude.hot;
     if (hot && typeof hot.snapshot === 'function') hot.snapshot(() => ({ draft: { vals: state.vals, id: state.id, status: state.status, savedAt: state.savedAt, dirty: state.dirty } }));
