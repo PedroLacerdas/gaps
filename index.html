@@ -207,8 +207,8 @@ dialog .actions { justify-content: flex-end; }
 .kpi .v:empty::before { content: "–"; color: var(--muted); font-weight: 500; }
 dialog h2 { font-family: var(--f-display); font-weight: 700; font-size: 20px; letter-spacing: .03em; }
 /* Tela de login: ocupa a janela toda, com a imagem da empresa de fundo e o formulário embaixo do logotipo */
-dialog#login { width: 100vw; height: 100vh; height: 100dvh; max-width: none; max-height: none; margin: 0; border: 0; border-radius: 0; padding: 16px 16px max(5vh, 16px); background: #efede1 url("fundo-login.jpg") center 50% / cover no-repeat; color: var(--ink); }
-dialog#login[open] { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+dialog#login { width: 100vw; height: 100vh; height: 100dvh; max-width: none; max-height: none; margin: 0; border: 0; border-radius: 0; padding: 16px; background: #efede1 url("fundo-login.jpg") center 50% / cover no-repeat; color: var(--ink); }
+dialog#login[open] { display: flex; flex-direction: column; justify-content: center; align-items: center; }
 dialog#login::backdrop { background: #efede1; }
 dialog#login p { margin-bottom: 0; }
 #login-form { width: min(24rem, 100%); padding: 20px; border: 1px solid var(--line-strong); border-radius: 10px; background: color-mix(in srgb, var(--surface) 90%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); box-shadow: 0 12px 32px rgba(0, 0, 0, .2); }
