@@ -3496,9 +3496,15 @@ async function initFirebase() {
       store.needLogin = false; connect(); const d = $('#login'); if (d.open) d.close();
       /* O papel vem do documento usuarios/<e-mail>: técnico e supervisor editam; os demais preenchem e salvam relatórios. */
       const email = String(u.email || '').toLowerCase();
-      Promise.resolve().then(() => (email ? adapter.collection('usuarios').doc(email).get() : null)).catch(() => null).then(doc => {
+      let erroPapel = null;
+      Promise.resolve().then(() => (email ? adapter.collection('usuarios').doc(email).get() : null)).catch(e => { erroPapel = e; return null; }).then(doc => {
         if (store.uid !== u.uid) return;
-        const p = bxSlug(doc && doc.papel || '');
+        /* Aceita o campo escrito como "Papel" ou com espaços, além de "papel". */
+        const chave = doc ? Object.keys(doc).find(k => bxSlug(k) === 'papel') : null;
+        const p = bxSlug(chave ? doc[chave] : '');
+        if (erroPapel) toast('Não foi possível ler o cadastro usuarios/' + email + (erroPapel.code === 'permission-denied' ? ': o Firebase recusou a leitura. Publique as regras do arquivo firestore.rules.' : '.') + ' Entrando como operador.', true);
+        else if (!doc) toast('Não há documento usuarios/' + email + ' no Firestore. Entrando como operador.');
+        else if (p !== 'tecnico' && p !== 'supervisor' && p !== 'operador') toast('O cadastro usuarios/' + email + ' não tem o campo papel com tecnico, supervisor ou operador. Entrando como operador.', true);
         store.papel = p === 'tecnico' || p === 'supervisor' ? p : 'operador'; store.canEdit = store.papel !== 'operador';
         cadRender(); calcEls = Array.from(document.querySelectorAll('[data-c]')); recalc(); renderSaved(); updateStatus();
       });
